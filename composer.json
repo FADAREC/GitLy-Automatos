@@ -1,0 +1,17 @@
+{
+  "name": "workflow-tools/git-deployment",
+  "description": "A workflow automation tool to simplify Git and deployment processes.",
+  "version": "1.0.0",
+  "type": "project",
+  "require": {
+    "vlucas/phpdotenv": "^5.6",
+    "guzzlehttp/guzzle": "^7.9"
+  },
+  "autoload": {
+    "psr-4": {
+      "WorkflowTools\\": "src/"
+    }
+  },
+  "minimum-stability": "stable",
+  "license": "MIT"
+}
