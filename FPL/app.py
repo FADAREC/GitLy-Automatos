@@ -1,3 +1,4 @@
+from flask import json
 import requests
 import requests_cache
 import pandas as pd
@@ -57,9 +58,14 @@ def calculate_recent_form_parallel(player_ids, n=5):
             return df['total_points'].mean() if not df.empty else 0
         return 0
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = list(tqdm(executor.map(fetch_history, player_ids), total=len(player_ids)))
-    return results
+    recent_form = []
+    batch_size = 50
+    for i in tqdm(range(0, len(player_ids), batch_size)):
+        with ThreadPoolExecutor(max_workers=4) as executor:  # Reduced number of threads
+            batch_ids = player_ids[i:i + batch_size]
+            results = list(executor.map(fetch_history, batch_ids))
+            recent_form.extend(results)
+    return recent_form
 
 def fetch_understat_data(player_name):
     """Fetches player data from Understat."""
@@ -166,17 +172,17 @@ def build_and_train_model(player_data):
     X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
 
     # Model training
-    model = XGBRegressor(n_estimators=100, max_depth=10, random_state=42)
-    print("Training model...")
+    model = XGBRegressor(n_estimators=100, max_depth=10, learning_rate=0.1, subsample=0.8, colsample_bytree=0.8)
     model.fit(X_train, y_train)
 
     # Evaluation
     y_pred = model.predict(X_test)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    print(f"Model RMSE: {rmse:.2f}")
+    mse = mean_squared_error(y_test, y_pred)
+    print(f"Model Mean Squared Error: {mse:.2f}")
+
     return model
 
-def predict_top_performers(model, player_data):
+def predict_top_performers(model, player_data, n=10):
     """Predicts top performers using the trained model."""
     features = player_data[[
         'now_cost', 'minutes', 'goals_scored', 'assists', 'clean_sheets',
@@ -184,20 +190,19 @@ def predict_top_performers(model, player_data):
         'recent_form', 'avg_fixture_difficulty', 'xG', 'xA'
     ]]
     player_data['predicted_points'] = model.predict(features)
-
-    # Sort players by predicted points
-    top_performers = player_data.sort_values(by='predicted_points', ascending=False)
-    return top_performers[['web_name', 'team_name', 'position', 'predicted_points']].head(20)
+    return player_data.nlargest(n, 'predicted_points')
 
 def print_top_performers(top_performers):
-    """Prints the top predicted performers."""
-    print("Top Predicted Performers for Next GW:")
-    print(tabulate(top_performers, headers="keys", tablefmt="pretty"))
+    """Prints the top performers in a tabulated format."""
+    table = top_performers[[
+        'web_name', 'team_name', 'position', 'now_cost', 'predicted_points'
+    ]]
+    print(tabulate(table, headers='keys', tablefmt='pretty'))
 
 def main():
-    """Main function to run the entire workflow."""
+    """Main function to execute the workflow."""
     print_memory_usage()
-    
+
     # Fetch data
     print("Fetching FPL data...")
     fpl_data = fetch_fpl_data()
